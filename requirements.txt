@@ -1,0 +1,12 @@
+opencv-python-headless>=4.8.0
+numpy>=1.23.5
+ultralytics>=8.0.0
+supervision>=0.16.0
+shapely>=2.0.1
+
+
+firebase-admin>=6.2.0
+
+google-api-python-client
+google-auth-httplib2
+google-auth-oauthlib

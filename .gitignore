@@ -1,0 +1,14 @@
+node_modules/
+venv/
+__pycache__/
+*.pt
+*.pth
+*.mp4
+*.dylib
+*.so
+mediamtx*/
+*.log
+.env
+.DS_Store
+serviceAccountKey.json
+!best (13).pt
