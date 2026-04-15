@@ -29,7 +29,7 @@ const formatFramesWithTime = (frames) => {
 // ══════════════════════════════════════════════════════════
 const EmailPanel = ({ workers, selectedCam }) => {
   const [emailTargets, setEmailTargets] = useState([]);
-  const [emailStatus, setEmailStatus]   = useState("idle");
+  const [emailStatus, setEmailStatus]   = useState("Passive Working");
 
   const handleSendEmail = async () => {
     if (emailTargets.length === 0) return;
@@ -50,7 +50,7 @@ const EmailPanel = ({ workers, selectedCam }) => {
           body: JSON.stringify({
             to: worker.email,
             subject: `Efficiency Alert: ${worker.name}`,
-            body: `Hello ${worker.name},\n\nWorking: ${worker.working}%\nIdle: ${worker.idle}%\nDistracted: ${worker.distracted}%\nAway: ${worker.away}%`
+            body: `Hello ${worker.name},\n\nWorking: ${worker.working}%\nPassive Working: ${worker.idle}%\nDistracted: ${worker.distracted}%\nAway: ${worker.away}%`
           })
         });
 
@@ -75,10 +75,10 @@ const EmailPanel = ({ workers, selectedCam }) => {
       }));
 
       setEmailStatus("success");
-      setTimeout(() => setEmailStatus("idle"), 3000);
+      setTimeout(() => setEmailStatus("Passive Working"), 3000);
     } catch (err) {
       console.error("Transmission Error:", err);
-      setEmailStatus("idle");
+      setEmailStatus("Passive Working");
       alert("Failed to send multi-channel alerts. Check backend console.");
     }
   };

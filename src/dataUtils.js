@@ -1,13 +1,14 @@
 // ══════════════════════════════════════════════════════════
 // dataUtils.js  —  CSV parsing, frame computation, sync helpers
 // ══════════════════════════════════════════════════════════
-import { WORKING_STATES, IDLE_STATES, DISTRACTED_STATES, AWAY_STATES } from "./config";
+import { WORKING_STATES, IDLE_STATES, DISTRACTED_STATES, AWAY_STATES, ON_LEAVE_STATES } from "./config";
 
 export function classifyState(raw) {
   if (WORKING_STATES.has(raw))    return "Working";
   if (IDLE_STATES.has(raw))       return "Idle";
   if (DISTRACTED_STATES.has(raw)) return "Distracted";
   if (AWAY_STATES.has(raw))       return "Away";
+  if (ON_LEAVE_STATES && ON_LEAVE_STATES.has(raw)) return "On Leave"; // <--- FIXED: Safely captures waivers
   return "Working";
 }
 
@@ -15,11 +16,9 @@ export function classifyState(raw) {
 export function formatWorkerName(wid) {
   if (!wid) return "Unknown Worker";
   const numMatch = String(wid).match(/\d+/);
-  // If it finds a number, call it "Worker 1". Otherwise, use the raw ID.
   return numMatch ? `Worker ${numMatch[0]}` : `Worker ${wid}`;
 }
 
-// ── Re-export isDuringBreak dependencies ──────────────────
 export function toMins(hhmm) {
   if (!hhmm || !hhmm.includes(":")) return null;
   const [h, m] = hhmm.split(":").map(Number);
@@ -58,7 +57,7 @@ export function parseCSV(text) {
   });
   const byWorker = {};
   for (const row of rows) {
-    const wid = row.worker_id || "Unknown"; // Failsafe if column is empty
+    const wid = row.worker_id || "Unknown"; 
     if (!byWorker[wid]) byWorker[wid] = [];
     byWorker[wid].push({
       frame:     parseInt(row.frame_index) || 0,
@@ -77,15 +76,16 @@ export function buildSummaryFromCSV(byWorker, breakRanges = []) {
       ? frames.filter(f => !isDuringBreak(f.timestamp, breakRanges))
       : frames;
     const total  = activeFrames.length || 1;
-    const counts = { Working: 0, Idle: 0, Distracted: 0, Away: 0 };
+    const counts = { Working: 0, Idle: 0, Distracted: 0, Away: 0, "On Leave": 0 };
     activeFrames.forEach(f => { if (counts[f.state] !== undefined) counts[f.state]++; });
     return {
       id:             wid,
-      name:           formatWorkerName(wid), // Updated!
+      name:           formatWorkerName(wid),
       working:        Math.round(counts.Working    / total * 100),
       idle:           Math.round(counts.Idle       / total * 100),
       distracted:     Math.round(counts.Distracted / total * 100),
       away:           Math.round(counts.Away       / total * 100),
+      onLeave:        Math.round(counts["On Leave"] / total * 100),
       totalFrames:    activeFrames.length,
       excludedFrames: frames.length - activeFrames.length,
     };
@@ -98,15 +98,12 @@ export function buildTimeline(frames) {
   const bySecond = {};
   frames.forEach(f => {
     if (!bySecond[f.timestamp])
-      bySecond[f.timestamp] = { Working: 0, Idle: 0, Distracted: 0, Away: 0 };
+      bySecond[f.timestamp] = { Working: 0, Idle: 0, Distracted: 0, Away: 0, "On Leave": 0 };
     bySecond[f.timestamp][f.state]++;
   });
   return Object.entries(bySecond).slice(0, 120).map(([ts, c]) => ({ time: ts, ...c }));
 }
 
-// ── Real-time sync helpers ────────────────────────────────
-
-// First frame index in CSV (video offset)
 export function getFirstFrame(byWorker) {
   let min = Infinity;
   Object.values(byWorker).forEach(frames => {
@@ -115,7 +112,6 @@ export function getFirstFrame(byWorker) {
   return min === Infinity ? 0 : min;
 }
 
-// Cumulative % per worker up to currentFrame
 export function computeLiveWorkers(byWorker, currentFrame, breakRanges = []) {
   return Object.entries(byWorker).map(([wid, frames]) => {
     const upTo = frames.filter(f =>
@@ -123,16 +119,17 @@ export function computeLiveWorkers(byWorker, currentFrame, breakRanges = []) {
       !isDuringBreak(f.timestamp, breakRanges)
     );
     const total  = upTo.length || 1;
-    const counts = { Working: 0, Idle: 0, Distracted: 0, Away: 0 };
+    const counts = { Working: 0, Idle: 0, Distracted: 0, Away: 0, "On Leave": 0 };
     upTo.forEach(f => { if (counts[f.state] !== undefined) counts[f.state]++; });
     const lastFrame = frames.filter(f => f.frame <= currentFrame).slice(-1)[0];
     return {
       id:          wid,
-      name:        formatWorkerName(wid), // Updated!
+      name:        formatWorkerName(wid), 
       working:     Math.round(counts.Working    / total * 100),
       idle:        Math.round(counts.Idle       / total * 100),
       distracted:  Math.round(counts.Distracted / total * 100),
       away:        Math.round(counts.Away       / total * 100),
+      onLeave:     Math.round(counts["On Leave"] / total * 100),
       totalFrames: upTo.length,
       liveState:   lastFrame ? lastFrame.state    : "Away",
       liveRaw:     lastFrame ? lastFrame.rawState : "AWAY",
@@ -140,7 +137,6 @@ export function computeLiveWorkers(byWorker, currentFrame, breakRanges = []) {
   }).sort((a, b) => a.id.localeCompare(b.id));
 }
 
-// Auto-detect FPS from CSV frame data
 export function detectFps(byWorker) {
   const allFrames = Object.values(byWorker).flat();
   if (allFrames.length < 60) return 30;
@@ -148,6 +144,6 @@ export function detectFps(byWorker) {
   allFrames.forEach(f => { secCounts[f.timestamp] = (secCounts[f.timestamp] || 0) + 1; });
   const vals      = Object.values(secCounts);
   const avgPerSec = vals.reduce((a, b) => a + b, 0) / vals.length;
-  const estFps    = Math.round(avgPerSec / 6); // 6 workers per frame
+  const estFps    = Math.round(avgPerSec / 6); 
   return (estFps >= 15 && estFps <= 60) ? estFps : 30;
 }

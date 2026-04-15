@@ -8,6 +8,7 @@ import HomeTab from "./HomeTab";
 import AnalyticsTab from "./AnalyticsTab";
 import ReportsTab from "./ReportsTab";
 import AddWorker from "./AddWorker"; 
+import WaiverPanel from "./WaiverPanel"; // Imported the new WaiverPanel
 
 const AddAdminModal = React.memo(({ onSave, onCancel }) => {
   const [email, setEmail] = useState("");
@@ -82,6 +83,7 @@ const Dashboard = ({ user, onLogout }) => {
       case "analytics": return <>Efficiency <span style={{ color: "var(--blue-500)" }}>Analytics</span></>;
       case "reports":   return <>Aggregated <span style={{ color: "var(--blue-500)" }}>Reports</span></>;
       case "team":      return <>Team <span style={{ color: "var(--blue-500)" }}>Management</span></>;
+      case "waivers":   return <>Leave & <span style={{ color: "var(--amber-500)" }}>Waivers</span></>; // Added title for waivers
       default: return <>Dashboard</>;
     }
   };
@@ -119,6 +121,7 @@ const Dashboard = ({ user, onLogout }) => {
           {activeTab === "analytics" && <AnalyticsTab workerProfiles={workerProfiles} />}
           {activeTab === "reports" && <ReportsTab workerProfiles={workerProfiles} />}
           {activeTab === "team" && <AddWorker />}
+          {activeTab === "waivers" && <WaiverPanel workerProfiles={workerProfiles} />} {/* Added WaiverPanel route */}
         </div>
 
       </div>

@@ -13,14 +13,16 @@ const STATE_COLORS = {
   Idle:       { solid: "#d97706", light: "#f59e0b", bg: "rgba(217,119,6,0.08)",    label: "Idle"       },
   Distracted: { solid: "#dc2626", light: "#ef4444", bg: "rgba(220,38,38,0.08)",    label: "Distracted" },
   Away:       { solid: "#475569", light: "#64748b", bg: "rgba(71,85,105,0.08)",    label: "Away"       },
+  "On Leave": { solid: "#9333ea", light: "#c084fc", bg: "rgba(147,51,234,0.08)",   label: "On Leave"   }, // Added new state
 };
 
 const FILTERS = [
   { key: "all",        label: "All States" },
   { key: "working",    label: "Working"    },
-  { key: "idle",       label: "Idle"       },
+  { key: "idle",       label: "Passive Work"},
   { key: "distracted", label: "Distracted" },
   { key: "away",       label: "Away"       },
+  { key: "onLeave",    label: "On Leave"   }, // Added new filter
 ];
 
 const SORTS = [
@@ -38,7 +40,7 @@ function buildTimeline(frames) {
   const bySecond = {};
   frames.forEach(f => {
     if (!bySecond[f.timestamp])
-      bySecond[f.timestamp] = { Working: 0, Idle: 0, Distracted: 0, Away: 0 };
+      bySecond[f.timestamp] = { Working: 0, Idle: 0, Distracted: 0, Away: 0, "On Leave": 0 };
     if (bySecond[f.timestamp][f.state] !== undefined)
       bySecond[f.timestamp][f.state]++;
   });
@@ -97,7 +99,7 @@ const ChartTooltip = ({ active, payload, label }) => {
 const ChartLegend = ({ filter }) => {
   const visible = filter === "all"
     ? Object.keys(STATE_COLORS)
-    : [filter.charAt(0).toUpperCase() + filter.slice(1)];
+    : [filter === "onLeave" ? "On Leave" : filter.charAt(0).toUpperCase() + filter.slice(1)];
 
   return (
     <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center" }}>
@@ -153,6 +155,7 @@ const WorkerDetail = ({ worker, csvData, onClose, onEditProfile }) => {
     { label: "Idle",       val: worker.idle,       ...STATE_COLORS.Idle       },
     { label: "Distracted", val: worker.distracted, ...STATE_COLORS.Distracted },
     { label: "Away",       val: worker.away,       ...STATE_COLORS.Away       },
+    { label: "On Leave",   val: worker.onLeave || 0, ...STATE_COLORS["On Leave"] }, // Added new state to panel
   ];
 
   // Efficiency score: weighted working bonus, distracted penalty
@@ -319,6 +322,7 @@ const WorkerDetail = ({ worker, csvData, onClose, onEditProfile }) => {
                 <Line type="monotone" dataKey="Idle"       stroke="#d97706" dot={false} strokeWidth={2} />
                 <Line type="monotone" dataKey="Distracted" stroke="#dc2626" dot={false} strokeWidth={2} />
                 <Line type="monotone" dataKey="Away"       stroke="#475569" dot={false} strokeWidth={1.5} strokeDasharray="4 2" />
+                <Line type="monotone" dataKey="On Leave"   stroke="#9333ea" dot={false} strokeWidth={1.5} />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -362,7 +366,8 @@ const WorkerChart = ({
       if (filter === "idle")       return { ...base, Idle: w.idle };
       if (filter === "distracted") return { ...base, Distracted: w.distracted };
       if (filter === "away")       return { ...base, Away: w.away };
-      return { ...base, Working: w.working, Idle: w.idle, Distracted: w.distracted, Away: w.away };
+      if (filter === "onLeave")    return { ...base, "On Leave": w.onLeave || 0 };
+      return { ...base, Working: w.working, Idle: w.idle, Distracted: w.distracted, Away: w.away, "On Leave": w.onLeave || 0 };
     });
   }, [workers, filter, sortKey, selectedWorker]);
 
@@ -412,6 +417,7 @@ const WorkerChart = ({
         .wc-filter-btn.active-idle       { background: #d97706; color: #fff; }
         .wc-filter-btn.active-distracted { background: #dc2626; color: #fff; }
         .wc-filter-btn.active-away       { background: #475569; color: #fff; }
+        .wc-filter-btn.active-onLeave    { background: #9333ea; color: #fff; }
         .wc-sort-btn {
           border: 1px solid #e2e8f0; padding: 4px 11px; border-radius: 7px;
           font-size: 11px; font-weight: 700; cursor: pointer;
@@ -592,6 +598,10 @@ const WorkerChart = ({
                     <stop offset="0%"   stopColor="#94a3b8" stopOpacity={0.9} />
                     <stop offset="100%" stopColor="#475569" stopOpacity={0.85} />
                   </linearGradient>
+                  <linearGradient id="wc-grad-onleave" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%"   stopColor="#c084fc" stopOpacity={1} />
+                    <stop offset="100%" stopColor="#9333ea" stopOpacity={0.9} />
+                  </linearGradient>
                 </defs>
 
                 <CartesianGrid
@@ -646,6 +656,14 @@ const WorkerChart = ({
                   <Bar
                     dataKey="Away"
                     fill="url(#wc-grad-away)"
+                    radius={[6, 6, 0, 0]}
+                    maxBarSize={36}
+                  />
+                )}
+                {(filter === "all" || filter === "onLeave") && (
+                  <Bar
+                    dataKey="On Leave"
+                    fill="url(#wc-grad-onleave)"
                     radius={[6, 6, 0, 0]}
                     maxBarSize={36}
                   />

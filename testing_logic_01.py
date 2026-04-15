@@ -22,7 +22,7 @@ from google.oauth2 import service_account
 # 1. CONFIGURATION
 # ==========================================
 RTSP_URL         = "rtsp://admin:CBKLVW@172.16.15.121:554/streaming/channels/101/"
-POSE_MODEL_PATH  = "/Users/musab/Desktop/Optimized_model/yolo11l-pose.pt"
+POSE_MODEL_PATH  = "/Users/musab/Desktop/Optimized_model/yolo11l-pose.pt" 
 PHONE_MODEL_PATH = "/Users/musab/Desktop/weffai-dashboard/best (13).pt"
 
 SCRIPT_DIR   = os.path.dirname(os.path.abspath(__file__))
@@ -44,30 +44,6 @@ try:
 except Exception as e:
     print(f"❌ Firebase init failed: {e}")
     db = None
-
-# --- ENERGY & KINEMATIC CONSTANTS ---
-MAX_WORK_ENERGY          = 100.0
-MAX_GESTURE_ENERGY       = 100.0
-MAX_DISTRACTION_ENERGY   = 120.0
-MAX_THINKING_TIME        = 180.0
-MAX_PHONE_PROXIMITY_TIME = 120.0
-
-MIN_PATH_LENGTH_TYPING       = 5.0
-MAX_BOX_AREA_TYPING          = 2000.0
-MIN_PATH_LENGTH_GESTURE      = 15.0
-MAX_SHOULDER_EXTENSION_RATIO = 2.5
-
-WRIST_CONF_GATE         = 0.65
-WRIST_MAX_VELOCITY_PX   = 80.0
-WRIST_STALE_FRAME_LIMIT = 60
-MIN_WRIST_SEPARATION_PX = 70
-
-WORK_ENERGY_CHARGE_RATE   = 30.0
-WORK_ENERGY_STILL_DRAIN   = 5.0
-WORK_ENERGY_GRACE_SECONDS = 3.0
-WORKING_STATE_THRESHOLD   = 60.0
-WORKING_CONFIRM_FRAMES    = 3
-PHONE_BOX_EXPAND_PX       = 35
 
 # ==========================================
 # 2. CONSOLIDATED ZONE CONFIG
@@ -110,16 +86,11 @@ def upload_video_to_drive(file_path):
         )
         service = build('drive', 'v3', credentials=creds)
 
-        file_metadata = {
-            'name': os.path.basename(file_path),
-            'parents': [GDRIVE_FOLDER_ID]
-        }
+        file_metadata = {'name': os.path.basename(file_path), 'parents': [GDRIVE_FOLDER_ID]}
         media = MediaFileUpload(file_path, mimetype='video/mp4', resumable=True)
         file = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
         print(f"✅ Successfully uploaded to Drive. File ID: {file.get('id')}")
-
         os.remove(file_path)
-        print("🗑️ Local video file deleted.")
     except Exception as e:
         print(f"❌ Google Drive upload failed: {e}")
 
@@ -135,13 +106,11 @@ class BufferlessVideoCapture:
             "-i", rtsp_url, "-f", "rawvideo", "-pix_fmt", "bgr24",
             "-vf", f"scale={width}:{height}", "-"
         ]
-        self.pipe = subprocess.Popen(command, stdout=subprocess.PIPE,
-                                     stderr=subprocess.DEVNULL, bufsize=10**8)
+        self.pipe = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=10**8)
         self._lock = threading.Lock()
         self.ret, self.frame, self.running = False, None, True
         self.t = threading.Thread(target=self._reader, daemon=True)
         self.t.start()
-
         for _ in range(30):
             if self.ret: break
             time.sleep(1.0)
@@ -151,8 +120,7 @@ class BufferlessVideoCapture:
             raw = self.pipe.stdout.read(self.frame_size)
             if len(raw) == self.frame_size:
                 with self._lock:
-                    self.frame = np.frombuffer(raw, dtype=np.uint8).reshape(
-                        (self.height, self.width, 3)).copy()
+                    self.frame = np.frombuffer(raw, dtype=np.uint8).reshape((self.height, self.width, 3)).copy()
                     self.ret = True
             else:
                 self.running = False
@@ -178,8 +146,7 @@ class FFmpegVideoWriter:
             "-preset", "ultrafast", "-crf", "23", output_path
         ]
         try:
-            self.process = subprocess.Popen(command, stdin=subprocess.PIPE,
-                                            stderr=subprocess.DEVNULL)
+            self.process = subprocess.Popen(command, stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
             self.opened = True
         except Exception as e:
             print(f"❌ FFmpeg Writer error: {e}")
@@ -208,11 +175,9 @@ class VideoWriterThread(threading.Thread):
         while self.running:
             start_time = time.time()
             ret, frame = self.cam.read()
-            if ret and frame is not None:
-                self.writer.write(frame)
+            if ret and frame is not None: self.writer.write(frame)
             elapsed = time.time() - start_time
-            if self.frame_time > elapsed:
-                time.sleep(self.frame_time - elapsed)
+            if self.frame_time > elapsed: time.sleep(self.frame_time - elapsed)
 
 # ==========================================
 # 5. HELPER FUNCTIONS
@@ -227,10 +192,11 @@ def get_iou(box1, box2):
     inter = max(0, xi2 - xi1) * max(0, yi2 - yi1)
     union = ((x2_1-x1_1)*(y2_1-y1_1)) + ((x2_2-x1_2)*(y2_2-y1_2)) - inter
     return inter / union if union > 0 else 0
+
 def calculate_std_dev(history):
     if len(history) < 3: return 0.0, 0.0, 0.0
     xs, ys = [pt[0] for pt in history], [pt[1] for pt in history]
-    return 0.0, 0.0, (float(np.std(xs)) + float(np.std(ys))) / 2.0
+    return float(np.mean(xs)), float(np.mean(ys)), (float(np.std(xs)) + float(np.std(ys))) / 2.0
 
 def assign_desk_id_by_y(side, y_pos):
     segment = FRAME_HEIGHT / 3.0
@@ -243,8 +209,9 @@ def assign_desk_id_by_y(side, y_pos):
         elif y_pos < segment * 2:       return 5
         else:                           return 4
 
+
 # ==========================================
-# 6. DESK STATE MACHINE
+# 6. POSE-AWARE ZONE & TIME STATE MACHINE
 # ==========================================
 class DeskState:
     def __init__(self, desk_cfg, fps, zone_cfg):
@@ -254,30 +221,29 @@ class DeskState:
         self.min_std  = desk_cfg["min_std"]
         self.zone_cfg = zone_cfg          
         self.state    = "AWAY"
-        self._reset_state()
-
+        
         self.total_frames = 0
         self.state_counts = { "Working": 0, "Idle": 0, "Distracted": 0, "Away": 0 }
 
+        # Memory Buffers
+        self.centroid_hist = deque(maxlen=int(15.0 * fps)) 
+        self.l_wrist_hist  = deque(maxlen=int(3.0 * fps))   
+        self.r_wrist_hist  = deque(maxlen=int(3.0 * fps))
+        
+        self.time_since_last_seen = 0.0
+        self.out_of_zone_timer    = 0.0
+        self.still_timer          = 0.0
+
     def _reset_state(self):
-        self.work_energy, self.gesture_energy, self.distraction_energy = 0.0, 0.0, 0.0
-        self.thinking_timer, self.phone_proximity_timer, self.still_timer = 0.0, 0.0, 0.0
-        self.working_confirm_counter = 0
-        self.l_wrist_hist, self.r_wrist_hist = deque(maxlen=int(self.fps)), deque(maxlen=int(self.fps))
-        self.l_wrist_last, self.r_wrist_last = None, None
-        self.l_frames_since_accepted, self.r_frames_since_accepted = 0, 0
+        self.centroid_hist.clear()
+        self.l_wrist_hist.clear()
+        self.r_wrist_hist.clear()
+        self.out_of_zone_timer = 0.0
+        self.still_timer       = 0.0
 
     def mark_away(self):
         self.state = "AWAY"
         self._reset_state()
-        self._tally_state()
-
-    def _tally_state(self):
-        self.total_frames += 1
-        if self.state in ["WORKING", "THINKING"]: self.state_counts["Working"] += 1
-        elif self.state == "IDLE": self.state_counts["Idle"] += 1
-        elif self.state in ["DISTRACTED", "PHONE PROXIMITY"]: self.state_counts["Distracted"] += 1
-        else: self.state_counts["Away"] += 1
 
     def get_dashboard_payload(self):
         t = max(1, self.total_frames)
@@ -288,121 +254,102 @@ class DeskState:
             "idle":        int((self.state_counts["Idle"]       / t) * 100),
             "distracted":  int((self.state_counts["Distracted"] / t) * 100),
             "away":        int((self.state_counts["Away"]       / t) * 100),
-            "raw_counts":  self.state_counts # <--- THE ANTI-AMNESIA PAYLOAD
+            "raw_counts":  self.state_counts 
         }
 
-    def calculate_kinematics(self, history):
-        if len(history) < 2: return 0.0, 0.0
-        path = sum(math.hypot(history[i][0]-history[i-1][0], history[i][1]-history[i-1][1]) for i in range(1, len(history)))
-        xs, ys = [pt[0] for pt in history], [pt[1] for pt in history]
-        return path, (max(xs)-min(xs)) * (max(ys)-min(ys))
+    def update(self, dt, kps, phone_boxes, center):
+        self.time_since_last_seen = 0.0
+        self.centroid_hist.append(center)
 
-    def _accept_wrist(self, wrist_kp, last_pos):
-        x, y, conf = wrist_kp
-        if conf < WRIST_CONF_GATE: return False, None
-        if last_pos and math.hypot(x-last_pos[0], y-last_pos[1]) > WRIST_MAX_VELOCITY_PX: return False, None
-        return True, (x, y)
-
-    def update(self, dt, kps, phone_boxes):
-        if self.state == "AWAY":
-            self._reset_state()
-            self.state = "THINKING"
-
-        l_shoulder, r_shoulder = kps[5], kps[6]
-        l_wrist,    r_wrist    = kps[9], kps[10]
-        l_elbow,    r_elbow    = kps[7], kps[8]   
-
-        valid_posture = True
-        if l_shoulder[2] > 0.5 and r_shoulder[2] > 0.5:
-            sw  = math.hypot(l_shoulder[0]-r_shoulder[0], l_shoulder[1]-r_shoulder[1])
-            smx, smy = (l_shoulder[0]+r_shoulder[0]) / 2, (l_shoulder[1]+r_shoulder[1]) / 2
-            if l_wrist[2] > 0.5 and sw > 10 and math.hypot(l_wrist[0]-smx, l_wrist[1]-smy)/sw > MAX_SHOULDER_EXTENSION_RATIO: valid_posture = False
-            if r_wrist[2] > 0.5 and sw > 10 and math.hypot(r_wrist[0]-smx, r_wrist[1]-smy)/sw > MAX_SHOULDER_EXTENSION_RATIO: valid_posture = False
-
-        l_ok, l_pos = self._accept_wrist(l_wrist, self.l_wrist_last)
-        r_ok, r_pos = self._accept_wrist(r_wrist, self.r_wrist_last)
-
-        if l_ok:
-            self.l_wrist_hist.append(l_pos); self.l_wrist_last = l_pos; self.l_frames_since_accepted = 0
+        # 1. Safely extract keypoints
+        if len(kps) > 10:
+            l_wrist, r_wrist = kps[9], kps[10]
+            if l_wrist[2] > 0.4: self.l_wrist_hist.append((l_wrist[0], l_wrist[1]))
+            if r_wrist[2] > 0.4: self.r_wrist_hist.append((r_wrist[0], r_wrist[1]))
         else:
-            self.l_frames_since_accepted += 1
-            if self.l_frames_since_accepted >= WRIST_STALE_FRAME_LIMIT: self.l_wrist_hist.clear(); self.l_wrist_last = None
+            l_wrist, r_wrist = [0,0,0], [0,0,0]
 
-        if r_ok:
-            self.r_wrist_hist.append(r_pos); self.r_wrist_last = r_pos; self.r_frames_since_accepted = 0
-        else:
-            self.r_frames_since_accepted += 1
-            if self.r_frames_since_accepted >= WRIST_STALE_FRAME_LIMIT: self.r_wrist_hist.clear(); self.r_wrist_last = None
+        l_elbow = kps[7] if len(kps) > 7 else [0,0,0]
+        r_elbow = kps[8] if len(kps) > 8 else [0,0,0]
 
-        l_path, l_area = self.calculate_kinematics(self.l_wrist_hist)
-        r_path, r_area = self.calculate_kinematics(self.r_wrist_hist)
-        _, _, l_std    = calculate_std_dev(self.l_wrist_hist)
-        _, _, r_std    = calculate_std_dev(self.r_wrist_hist)
-
-        l_last = self.l_wrist_hist[-1] if self.l_wrist_hist else None
-        r_last = self.r_wrist_hist[-1] if self.r_wrist_hist else None
-
-        l_in_work = l_last and is_point_in_poly(l_last, self.zone_cfg["work_poly"])
-        r_in_work = r_last and is_point_in_poly(r_last, self.zone_cfg["work_poly"])
-
-        wrists_clasped = False
-        if l_last and r_last and math.hypot(l_last[0]-r_last[0], l_last[1]-r_last[1]) < MIN_WRIST_SEPARATION_PX: wrists_clasped = True
-
-        raw_working, is_gesturing, is_scrolling_phone = False, False, False
-
-        if valid_posture and not wrists_clasped:
-            if (l_in_work and l_path > MIN_PATH_LENGTH_TYPING and l_area < MAX_BOX_AREA_TYPING and l_std > self.min_std) or \
-               (r_in_work and r_path > MIN_PATH_LENGTH_TYPING and r_area < MAX_BOX_AREA_TYPING and r_std > self.min_std): raw_working = True
-
-        self.working_confirm_counter = self.working_confirm_counter + 1 if raw_working else 0
-        is_working_physically = self.working_confirm_counter >= WORKING_CONFIRM_FRAMES
-
-        if (l_path > MIN_PATH_LENGTH_GESTURE and l_area > MAX_BOX_AREA_TYPING and not l_in_work) or \
-           (r_path > MIN_PATH_LENGTH_GESTURE and r_area > MAX_BOX_AREA_TYPING and not r_in_work): is_gesturing = True
-
-        is_still = not is_working_physically and not is_gesturing
-
+        # 2. Distraction Check
+        is_scrolling_phone = False
         for ph_box in phone_boxes:
-            x1, y1 = ph_box[0] - PHONE_BOX_EXPAND_PX, ph_box[1] - PHONE_BOX_EXPAND_PX
-            x2, y2 = ph_box[2] + PHONE_BOX_EXPAND_PX, ph_box[3] + PHONE_BOX_EXPAND_PX
-            if l_last and point_in_rect(l_last, x1, y1, x2, y2): is_scrolling_phone = True
-            if r_last and point_in_rect(r_last, x1, y1, x2, y2): is_scrolling_phone = True
-            if l_elbow[2] > 0.5 and point_in_rect((l_elbow[0], l_elbow[1]), x1, y1, x2, y2): is_scrolling_phone = True
-            if r_elbow[2] > 0.5 and point_in_rect((r_elbow[0], r_elbow[1]), x1, y1, x2, y2): is_scrolling_phone = True
+            x1, y1 = ph_box[0] - 30, ph_box[1] - 30
+            x2, y2 = ph_box[2] + 30, ph_box[3] + 30
+            if point_in_rect(center, x1, y1, x2, y2): is_scrolling_phone = True
+            if l_wrist[2] > 0.4 and point_in_rect((l_wrist[0], l_wrist[1]), x1, y1, x2, y2): is_scrolling_phone = True
+            if r_wrist[2] > 0.4 and point_in_rect((r_wrist[0], r_wrist[1]), x1, y1, x2, y2): is_scrolling_phone = True
+            if l_elbow[2] > 0.4 and point_in_rect((l_elbow[0], l_elbow[1]), x1, y1, x2, y2): is_scrolling_phone = True
+            if r_elbow[2] > 0.4 and point_in_rect((r_elbow[0], r_elbow[1]), x1, y1, x2, y2): is_scrolling_phone = True
 
         if is_scrolling_phone:
-            self.distraction_energy   = min(MAX_DISTRACTION_ENERGY, self.distraction_energy + dt)
-            self.phone_proximity_timer = min(MAX_PHONE_PROXIMITY_TIME, self.phone_proximity_timer + dt)
-            self.work_energy = max(0.0, self.work_energy - (20.0 * dt))
+            self.state = "DISTRACTED"
+            self._tally_state()
+            return
+
+        # 3. Ghost Chair Check (Still required for top-down pose errors)
+        if len(self.centroid_hist) >= self.fps * 10:
+            _, _, center_std = calculate_std_dev(self.centroid_hist)
+            if center_std < 0.3:
+                self.mark_away()
+                self._tally_state()
+                return
+
+        # 4. ZONE CHECK LOGIC (Solves the "Wandering / Rolling Chair" issue)
+        in_work_zone = False
+        # They are "In the zone" IF their body center is inside the work_poly OR their wrists are in it.
+        if is_point_in_poly(center, self.zone_cfg["work_poly"]):
+            in_work_zone = True
+        elif l_wrist[2] > 0.4 and is_point_in_poly((l_wrist[0], l_wrist[1]), self.zone_cfg["work_poly"]):
+            in_work_zone = True
+        elif r_wrist[2] > 0.4 and is_point_in_poly((r_wrist[0], r_wrist[1]), self.zone_cfg["work_poly"]):
+            in_work_zone = True
+
+        if not in_work_zone:
+            # Pushed chair back, standing nearby, or rolling outside work zone.
+            self.out_of_zone_timer += dt
+            self.still_timer = 0.0 # Clear still timer because they aren't working anyway
+            
+            if self.out_of_zone_timer >= 120.0:
+                self.state = "PASSIVE WORKING"
+            else:
+                self.state = "WORKING" # Benefit of the doubt while transitioning
         else:
-            self.distraction_energy    = max(0.0, self.distraction_energy - (2.0 * dt))
-            self.phone_proximity_timer = max(0.0, self.phone_proximity_timer - (1.0 * dt))
-
-        if is_working_physically and not is_scrolling_phone:
-            self.work_energy    = min(MAX_WORK_ENERGY, self.work_energy + (WORK_ENERGY_CHARGE_RATE * dt))
-            self.gesture_energy, self.thinking_timer, self.still_timer = max(0.0, self.gesture_energy - (20.0 * dt)), max(0.0, self.thinking_timer - (10.0 * dt)), 0.0
-        elif is_gesturing:
-            self.gesture_energy = min(MAX_GESTURE_ENERGY, self.gesture_energy + (1.0 * dt))
-            self.work_energy, self.thinking_timer, self.still_timer = max(0.0, self.work_energy - (20.0 * dt)), max(0.0, self.thinking_timer - (10.0 * dt)), 0.0
-        elif is_still:
-            self.still_timer += dt
-            if self.still_timer > WORK_ENERGY_GRACE_SECONDS: self.work_energy = max(0.0, self.work_energy - (WORK_ENERGY_STILL_DRAIN * dt))
-            self.gesture_energy = max(0.0, self.gesture_energy - (10.0 * dt))
-            if not is_scrolling_phone: self.thinking_timer += dt
-
-        if wrists_clasped: self.work_energy, self.still_timer = max(0.0, self.work_energy - (WORK_ENERGY_STILL_DRAIN * dt)), 0.0
-        if not valid_posture: self.work_energy = max(0.0, self.work_energy - (30.0 * dt))
-
-        if self.distraction_energy >= MAX_DISTRACTION_ENERGY: self.state = "DISTRACTED"
-        elif self.gesture_energy >= 60.0 or self.thinking_timer >= MAX_THINKING_TIME: self.state = "IDLE"
-        elif self.work_energy >= WORKING_STATE_THRESHOLD: self.state = "WORKING"
-        elif self.work_energy < 5.0: self.state = "PHONE PROXIMITY" if self.phone_proximity_timer >= MAX_PHONE_PROXIMITY_TIME else "THINKING"
+            self.out_of_zone_timer = 0.0
+            
+            # In Work Zone -> Check Micro-Movements
+            _, _, l_std = calculate_std_dev(self.l_wrist_hist)
+            _, _, r_std = calculate_std_dev(self.r_wrist_hist)
+            
+            if max(l_std, r_std) >= self.min_std or len(self.l_wrist_hist) < self.fps * 2:
+                self.still_timer = 0.0
+                self.state = "WORKING"
+            else:
+                self.still_timer += dt
+                if self.still_timer >= 120.0:
+                    self.state = "PASSIVE WORKING"
+                else:
+                    self.state = "WORKING"
 
         self._tally_state()
 
+    def apply_absence(self, dt):
+        self.time_since_last_seen += dt
+        if self.time_since_last_seen > 15.0: # 15-second tracking buffer
+            self.mark_away()
+        self._tally_state()
+
+    def _tally_state(self):
+        self.total_frames += 1
+        if self.state == "WORKING": self.state_counts["Working"] += 1
+        elif self.state == "PASSIVE WORKING": self.state_counts["Idle"] += 1
+        elif self.state == "DISTRACTED": self.state_counts["Distracted"] += 1
+        else: self.state_counts["Away"] += 1
+
 
 # ==========================================
-# 7. FIREBASE PUSH (DUAL-WRITE ARCHITECTURE)
+# 7. FIREBASE PUSH (ASYNC)
 # ==========================================
 last_firebase_push_time = 0
 
@@ -418,38 +365,38 @@ def push_to_firestore_rate_limited(desk_states):
     now_str = datetime.now().strftime("%H:%M:%S")
     today_str = datetime.now().strftime("%Y-%m-%d")
 
-    payload = {
-        "timestamp":  now_str,
-        "updatedAt":  firestore.SERVER_TIMESTAMP,
-        "workers":    {}
-    }
-
+    payload = {"timestamp": now_str, "updatedAt": firestore.SERVER_TIMESTAMP, "workers": {}}
     for d_id, desk in desk_states.items():
-        worker_id = f"W00{d_id}"
-        payload["workers"][worker_id] = desk.get_dashboard_payload()
+        payload["workers"][f"W00{d_id}"] = desk.get_dashboard_payload()
 
-    try:
-        db.collection("live_workstations").document("Workstation-1").set(payload)
-        db.collection("daily_stats").document(today_str).set(payload)
-        print(f"[☁️ SYNC @ {now_str}] Firebase Updated (Live + History).")
-    except Exception as e:
-        print(f"❌ Firebase Sync Failed: {e}")
+    def fire_and_forget(payload_data, doc_date):
+        try:
+            db.collection("live_workstations").document("Workstation-1").set(payload_data)
+            db.collection("daily_stats").document(doc_date).set(payload_data, merge=True)
+            print(f"[☁️ SYNC @ {payload_data['timestamp']}] Firebase Updated.")
+        except Exception as e:
+            print(f"❌ Async Firebase Sync Failed: {e}")
+
+    threading.Thread(target=fire_and_forget, args=(payload, today_str), daemon=True).start()
 
 
 # ==========================================
 # 8. MAIN LOOP
 # ==========================================
 def main():
-    print("🚀 Initializing LIVE PRODUCTION PIPELINE")
+    print("🚀 Initializing POSE PIPELINE (With ID Lock + Zone Rules)")
 
     pose_model  = YOLO(POSE_MODEL_PATH, task='pose')
     phone_model = YOLO(PHONE_MODEL_PATH)
     tracker     = sv.ByteTrack(track_activation_threshold=0.25, minimum_matching_threshold=0.5, frame_rate=30)
 
     desk_states = { d["id"]: DeskState(d, 30, CONSOLIDATED_ZONES[d["side"]]) for d in DESK_CONFIG }
-    desk_absence_counter = {d["id"]: 0.0 for d in DESK_CONFIG}
+    
+    # ⬅️ FIX 1: THE TRACKING MEMORY LOCK
+    # This prevents "Zone Bleed" when workers move to another desk
+    track_to_desk = {} 
 
-    # --- RESTORE PREVIOUS SESSION DATA (Anti-Amnesia) ---
+    # --- RESTORE PREVIOUS SESSION DATA ---
     today_str = datetime.now().strftime("%Y-%m-%d")
     print(f"🔍 Checking for existing data for today ({today_str})...")
     if db is not None:
@@ -464,21 +411,13 @@ def main():
                         if w_id in data["workers"]:
                             w_data = data["workers"][w_id]
                             desk.total_frames = w_data.get("totalFrames", 0)
-                            if "raw_counts" in w_data:
-                                desk.state_counts = w_data["raw_counts"]
-                    print("✅ Successfully restored today's accumulated data! AI will resume counting.")
-            else:
-                print("ℹ️ No previous data found for today. Starting fresh.")
+                            if "raw_counts" in w_data: desk.state_counts = w_data["raw_counts"]
+                    print("✅ Successfully restored today's accumulated data!")
         except Exception as e:
-            print(f"⚠️ Could not restore data: {e}")
+            pass
     # ----------------------------------------------------
 
-    print(f"📡 Connecting to RTSP Stream: {RTSP_URL}")
     cam = BufferlessVideoCapture(RTSP_URL, width=1920, height=1080)
-    if not cam.ret:
-        print("❌ ERROR: Could not read stream.")
-        return
-
     current_date       = datetime.now().date()
     current_video_file = get_video_filename()
     writer             = FFmpegVideoWriter(current_video_file, width=1920, height=1080, fps=25)
@@ -492,30 +431,26 @@ def main():
         while True:
             current_time = time.time()
 
-            # --- END OF DAY ROLLOVER ---
+            # --- MIDNIGHT ROLLOVER ---
             now_date = datetime.now().date()
             if now_date > current_date:
-                print("🌙 Midnight Rollover! Finalizing today's video...")
                 writer_thread.running = False
                 writer_thread.join()
                 writer.release()
-
-                upload_thread = threading.Thread(target=upload_video_to_drive, args=(current_video_file,))
-                upload_thread.start()
-
-                current_date       = now_date
+                threading.Thread(target=upload_video_to_drive, args=(current_video_file,)).start()
+                
+                current_date = now_date
                 current_video_file = get_video_filename()
-                writer             = FFmpegVideoWriter(current_video_file, width=1920, height=1080, fps=25)
-                writer_thread      = VideoWriterThread(cam, writer)
+                writer = FFmpegVideoWriter(current_video_file, width=1920, height=1080, fps=25)
+                writer_thread = VideoWriterThread(cam, writer)
                 writer_thread.start()
-
-                # Reset accumulators for the new day
+                
+                track_to_desk.clear() # Clear tracking memory for the new day
                 for d_id in desk_states:
                     desk_states[d_id]._reset_state()
                     desk_states[d_id].total_frames = 0
                     desk_states[d_id].state_counts = {"Working": 0, "Idle": 0, "Distracted": 0, "Away": 0}
 
-            # --- FRAME READ ---
             ret, frame = cam.read()
             if not ret or frame is None:
                 time.sleep(0.1)
@@ -528,44 +463,44 @@ def main():
             phone_results = phone_model(frame, imgsz=640, verbose=False, conf=0.25)[0]
 
             phone_boxes = [box.xyxy.cpu().numpy()[0] for box in phone_results.boxes if int(box.cls[0]) == 0] if phone_results.boxes else []
-            detections        = sv.Detections.from_ultralytics(pose_results)
+            detections  = sv.Detections.from_ultralytics(pose_results)
             tracked_detections = tracker.update_with_detections(detections)
-            kps_list          = (pose_results.keypoints.data.cpu().numpy() if pose_results.keypoints else [])
-            pose_boxes        = pose_results.boxes.xyxy.cpu().numpy()
+            kps_list    = (pose_results.keypoints.data.cpu().numpy() if pose_results.keypoints else [])
+            pose_boxes  = pose_results.boxes.xyxy.cpu().numpy()
 
             desks_updated_this_frame = set()
 
             for i in range(len(tracked_detections)):
+                t_id  = tracked_detections.tracker_id[i]
                 t_box = tracked_detections.xyxy[i]
+                
+                # Re-associate tracking box with pose keypoints
                 best_iou, best_idx = 0, -1
                 for j, p_box in enumerate(pose_boxes):
                     iou = get_iou(t_box, p_box)
                     if iou > best_iou: best_iou, best_idx = iou, j
 
                 kps = kps_list[best_idx] if best_iou > 0.5 and best_idx != -1 else []
-                if len(kps) < 11: continue
-
                 center = ((t_box[0]+t_box[2])/2, (t_box[1]+t_box[3])/2)
-                cx, cy = center
 
-                assigned_side = None
-                for side, zone in CONSOLIDATED_ZONES.items():
-                    if is_point_in_poly(center, zone["seat_poly"]) or is_point_in_poly(center, zone["work_poly"]):
-                        assigned_side = side
-                        break
+                # ⬅️ FIX 1 IN ACTION: Lock a person's ID to a desk the FIRST time we see them
+                if t_id not in track_to_desk:
+                    for side, zone in CONSOLIDATED_ZONES.items():
+                        if is_point_in_poly(center, zone["seat_poly"]) or is_point_in_poly(center, zone["work_poly"]):
+                            assigned_d_id = assign_desk_id_by_y(side, center[1])
+                            track_to_desk[t_id] = assigned_d_id
+                            break
+                
+                # Fetch their locked desk
+                assigned_d_id = track_to_desk.get(t_id)
 
-                assigned_d_id = None
-                if assigned_side: assigned_d_id = assign_desk_id_by_y(assigned_side, cy)
-
-                if assigned_d_id:
-                    desk_states[assigned_d_id].update(dt, kps, phone_boxes)
+                if assigned_d_id and assigned_d_id not in desks_updated_this_frame:
+                    desk_states[assigned_d_id].update(dt, kps, phone_boxes, center)
                     desks_updated_this_frame.add(assigned_d_id)
 
-            for d_id in desk_states:
-                if d_id in desks_updated_this_frame: desk_absence_counter[d_id] = 0.0
-                else:
-                    desk_absence_counter[d_id] += dt
-                    if desk_absence_counter[d_id] >= 5.0: desk_states[d_id].mark_away()
+            for d_id, desk in desk_states.items():
+                if d_id not in desks_updated_this_frame:
+                    desk.apply_absence(dt)
 
             push_to_firestore_rate_limited(desk_states)
 

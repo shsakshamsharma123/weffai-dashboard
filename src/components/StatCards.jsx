@@ -18,10 +18,10 @@ const StatCards = ({ workers = [] }) => {
   const cards = [
     { label: "Avg Working",    value: avg("working"),    sub: "of monitored time", cls: "sc-blue"  },
     { label: "Workers",        value: presentCount,      sub: "currently present", cls: "sc-teal"  },
-    { label: "Avg Idle",       value: avg("idle"),       sub: "unproductive time", cls: "sc-amber" },
+    { label: "Avg Passive Work", value: avg("idle"),       sub: "unproductive time", cls: "sc-amber" },
     { label: "Avg Distracted", value: avg("distracted"), sub: "phone / off-task",  cls: "sc-red"   },
   ];
-
+  
   return (
     <div className="stat-cards">
       {cards.map((c, i) => (
@@ -34,5 +34,4 @@ const StatCards = ({ workers = [] }) => {
     </div>
   );
 };
-
 export default StatCards;

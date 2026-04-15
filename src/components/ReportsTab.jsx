@@ -28,7 +28,7 @@ const ReportsTab = ({ workerProfiles }) => {
   const [dataStatus, setDataStatus] = useState("loading");
   const [statusMsg, setStatusMsg] = useState("Preparing summary report...");
   const [selectedWorkstation, setSelectedWorkstation] = useState("All");
-  const [emailStatus, setEmailStatus] = useState("idle");
+  const [emailStatus, setEmailStatus] = useState("Passive Work");
 
   // Extract unique workstations dynamically
   const availableWorkstations = useMemo(() => {
@@ -147,7 +147,7 @@ const ReportsTab = ({ workerProfiles }) => {
     Object.keys(groupedData).sort().forEach(ws => {
       reportText += `========== ${ws.toUpperCase()} ==========\n`;
       groupedData[ws].forEach((w, index) => {
-        reportText += `${index + 1}. ${w.name} (ID: ${w.id})\n   Efficiency: ${w.avgWorking}% | Idle: ${w.avgIdle}% | Distracted: ${w.avgDistracted}% | Away: ${w.avgAway}%\n`;
+        reportText += `${index + 1}. ${w.name} (ID: ${w.id})\n   Efficiency: ${w.avgWorking}% | Passive Work: ${w.avgIdle}% | Distracted: ${w.avgDistracted}% | Away: ${w.avgAway}%\n`;
       });
       reportText += `\n`;
     });
@@ -163,10 +163,10 @@ const ReportsTab = ({ workerProfiles }) => {
         })
       });
       setEmailStatus("success");
-      setTimeout(() => setEmailStatus("idle"), 3000);
+      setTimeout(() => setEmailStatus("Passive Work"), 3000);
     } catch (err) {
       console.error("Transmission Error:", err);
-      setEmailStatus("idle");
+      setEmailStatus("Passive Work");
       alert("Failed to send admin report.");
     }
   };
@@ -262,12 +262,22 @@ const ReportsTab = ({ workerProfiles }) => {
       {/* ── Summary Grid ── */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: "20px" }}>
         {filteredData.map((worker, index) => {
-          const isGood = worker.status === "Excellent" || worker.status === "Stable";
-          const themeColor = isGood ? "var(--success)" : "var(--danger)";
-          const themeBg = isGood ? "rgba(16,185,129,0.1)" : "rgba(239,68,68,0.1)";
+          
+          // Explicit HEX colors to prevent CSS variable breaking
+          let themeColor = "#f59e0b"; // Amber (Stable)
+          let themeBg = "rgba(245,158,11,0.1)";
+          
+          if (worker.status === "Excellent") {
+            themeColor = "#10b981"; // Emerald Green
+            themeBg = "rgba(16,185,129,0.1)";
+          } else if (worker.status === "Critical") {
+            themeColor = "#ef4444"; // Red
+            themeBg = "rgba(239,68,68,0.1)";
+          }
           
           return (
-            <div key={worker.id} className="panel" style={{ borderLeft: `5px solid ${themeColor}`, animationDelay: `${index * 0.05}s` }}>
+            // Switched to borderTop instead of borderLeft to put the bar on the very top!
+            <div key={worker.id} className="panel" style={{ borderTop: `5px solid ${themeColor}`, animationDelay: `${index * 0.05}s` }}>
               <div className="panel-body" style={{ padding: "20px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "20px" }}>
                   <div>
@@ -297,7 +307,7 @@ const ReportsTab = ({ workerProfiles }) => {
 
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px", marginTop: "10px" }}>
                     <div style={{ textAlign: "center", padding: "10px 4px", background: "var(--gray-50)", borderRadius: "10px", border: '1px solid var(--gray-100)' }}>
-                      <div style={{ fontSize: "9px", color: "var(--gray-400)", fontWeight: 700, textTransform: 'uppercase', marginBottom: 4 }}>Idle</div>
+                      <div style={{ fontSize: "9px", color: "var(--gray-400)", fontWeight: 700, textTransform: 'uppercase', marginBottom: 4 }}>Passive Work</div>
                       <div style={{ fontSize: "14px", fontWeight: 800, color: "var(--warn)" }}>{worker.avgIdle}%</div>
                     </div>
                     <div style={{ textAlign: "center", padding: "10px 4px", background: "var(--gray-50)", borderRadius: "10px", border: '1px solid var(--gray-100)' }}>

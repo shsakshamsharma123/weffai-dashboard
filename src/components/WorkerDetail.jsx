@@ -9,7 +9,8 @@ function buildTimeline(frames) {
   const bySecond = {};
   frames.forEach(f => {
     if (!bySecond[f.timestamp])
-      bySecond[f.timestamp] = { Working: 0, Idle: 0, Distracted: 0, Away: 0 };
+      // ADDED: Initialize "On Leave" so timeline draws properly
+      bySecond[f.timestamp] = { Working: 0, Idle: 0, Distracted: 0, Away: 0, "On Leave": 0 };
     if (bySecond[f.timestamp][f.state] !== undefined) {
       bySecond[f.timestamp][f.state]++;
     }
@@ -71,11 +72,13 @@ const WorkerDetail = ({ worker, csvData, onClose, onEditProfile }) => {
           </button>
         </div>
 
+        {/* ── ADDED: "On Leave" mapping array ── */}
         {[
-          { label: "Working", val: worker.working, color: "#2563eb" },
-          { label: "Idle", val: worker.idle, color: "#f59e0b" },
-          { label: "Distracted", val: worker.distracted, color: "#ef4444" },
-          { label: "Away", val: worker.away, color: "#6b7280" },
+          { label: "Working",    val: worker.working,      color: "#2563eb" },
+          { label: "Idle",       val: worker.idle,         color: "#f59e0b" },
+          { label: "Distracted", val: worker.distracted,   color: "#ef4444" },
+          { label: "Away",       val: worker.away,         color: "#6b7280" },
+          { label: "On Leave",   val: worker.onLeave || 0, color: "#9333ea" }, // Safely fall back to 0 if no leave taken
         ].map(s => (
           <div key={s.label}>
             <div className="detail-row">
@@ -105,7 +108,8 @@ const WorkerDetail = ({ worker, csvData, onClose, onEditProfile }) => {
                 <Line type="monotone" dataKey="Working" stroke="#2563eb" dot={false} strokeWidth={1.5} />
                 <Line type="monotone" dataKey="Idle" stroke="#f59e0b" dot={false} strokeWidth={1.5} />
                 <Line type="monotone" dataKey="Distracted" stroke="#ef4444" dot={false} strokeWidth={1.5} />
-                <Line type="monotone" dataKey="Away" stroke="#6b7280" dot={false} strokeWidth={1.5} />
+                <Line type="monotone" dataKey="Away" stroke="#6b7280" dot={false} strokeWidth={1.5} strokeDasharray="4 2" />
+                <Line type="monotone" dataKey="On Leave" stroke="#9333ea" dot={false} strokeWidth={1.5} />
               </LineChart>
             </ResponsiveContainer>
           </>

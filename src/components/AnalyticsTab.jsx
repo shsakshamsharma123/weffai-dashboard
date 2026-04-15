@@ -16,13 +16,13 @@ const formatWorkerName = (wid) => {
 };
 
 const formatFramesWithTime = (frames) => {
-  const fps = 1; 
-  if (!frames || isNaN(frames)) return "0 (0 min)";
+  const fps = 1; // Sync with Python AI Engine FPS
+  if (!frames || isNaN(frames)) return "0 min";
   const totalSeconds = Math.floor(frames / fps);
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
-  if (hours > 0) return `${frames} (approx ${hours} hr ${minutes} min)`;
-  return `${frames} (${minutes} min)`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
 };
 
 const getDatesInRange = (startDate, endDate) => {
@@ -79,7 +79,7 @@ const WorkerDetailModal = ({ worker, onClose }) => {
           <div style={{ display: "flex", gap: 20, marginBottom: 24 }}>
             {[
               { label: "Working", val: worker.working, color: "#2563eb", bg: "rgba(37,99,235,0.1)" },
-              { label: "Idle", val: worker.idle, color: "#f59e0b", bg: "rgba(245,158,11,0.1)" },
+              { label: "Passive Working", val: worker.idle, color: "#f59e0b", bg: "rgba(245,158,11,0.1)" },
               { label: "Distracted", val: worker.distracted, color: "#ef4444", bg: "rgba(239,68,68,0.1)" },
               { label: "Away", val: worker.away, color: "#6b7280", bg: "rgba(107,114,128,0.1)" },
             ].map(s => (
@@ -100,18 +100,25 @@ const WorkerDetailModal = ({ worker, onClose }) => {
                 <Tooltip content={<ChartTooltip />} cursor={{fill: 'transparent'}} />
                 <Legend wrapperStyle={{ fontSize: 11, paddingTop: 10 }} />
                 <Bar dataKey="Working" stackId="a" fill="#2563eb" radius={[4,0,0,4]} barSize={40} />
-                <Bar dataKey="Idle" stackId="a" fill="#f59e0b" barSize={40} />
+                <Bar dataKey="Passive Working" stackId="a" fill="#f59e0b" barSize={40} />
                 <Bar dataKey="Distracted" stackId="a" fill="#ef4444" barSize={40} />
                 <Bar dataKey="Away" stackId="a" fill="#6b7280" radius={[0,4,4,0]} barSize={40} />
               </BarChart>
             </ResponsiveContainer>
           </div>
           
-          <div style={{ marginTop: 20, fontSize: 12, color: "var(--gray-400)", textAlign: "center" }}>
-            Total Frames Processed: <strong>{worker.totalFrames.toLocaleString()}</strong>
+          <div style={{ marginTop: 24, padding: "16px", background: "var(--blue-50)", borderRadius: "12px", border: "1px solid rgba(37,99,235,0.2)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--blue-600)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Total Monitored Time</div>
+              <div style={{ fontSize: 12, color: "var(--gray-500)", marginTop: 4 }}>Scheduled breaks & authorized leaves are excluded.</div>
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <div style={{ fontSize: 22, fontWeight: 800, color: "var(--blue-900)" }}>{formatFramesWithTime(worker.totalFrames)}</div>
+              <div style={{ fontSize: 11, color: "var(--gray-400)", fontWeight: 600 }}>({worker.totalFrames.toLocaleString()} frames)</div>
+            </div>
           </div>
-        </div>
 
+        </div>
       </div>
     </div>
   );
@@ -133,7 +140,7 @@ const AnalyticsTab = ({ workerProfiles }) => {
   
   const [sortConfig, setSortConfig] = useState({ key: 'name', direction: 'asc' });
   const [isWorkerDropdownOpen, setIsWorkerDropdownOpen] = useState(false);
-  const [emailStatus, setEmailStatus] = useState("idle");
+  const [emailStatus, setEmailStatus] = useState("Passive Working");
 
   // Extract unique workstations dynamically
   const availableWorkstations = useMemo(() => {
@@ -284,7 +291,7 @@ const AnalyticsTab = ({ workerProfiles }) => {
           body: JSON.stringify({
             to: worker.email,
             subject: `Efficiency Analytics Alert: ${worker.name}`,
-            body: `Hello ${worker.name},\n\nHere is your efficiency report for the selected period:\n\nWorking: ${worker.working}%\nIdle: ${worker.idle}%\nDistracted: ${worker.distracted}%\nAway: ${worker.away}%`
+            body: `Hello ${worker.name},\n\nHere is your efficiency report for the selected period:\n\nMonitored Time: ${formatFramesWithTime(worker.totalFrames)}\nWorking: ${worker.working}%\nPassive Working: ${worker.idle}%\nDistracted: ${worker.distracted}%\nAway: ${worker.away}%`
           })
         });
 
@@ -299,7 +306,7 @@ const AnalyticsTab = ({ workerProfiles }) => {
             idle: worker.idle,                          
             distracted: worker.distracted,              
             away: worker.away,                          
-            totalFrames: formatFramesWithTime(worker.totalFrames), 
+            totalFrames: `${worker.totalFrames} (${formatFramesWithTime(worker.totalFrames)})`, 
             camera: "Analytics Database"                         
           })
         });
@@ -308,10 +315,10 @@ const AnalyticsTab = ({ workerProfiles }) => {
       }));
 
       setEmailStatus("success");
-      setTimeout(() => setEmailStatus("idle"), 3000);
+      setTimeout(() => setEmailStatus("Passive Working"), 3000);
     } catch (err) {
       console.error("Transmission Error:", err);
-      setEmailStatus("idle");
+      setEmailStatus("Passive Working");
       alert("Failed to send multi-channel alerts. Check backend console.");
     }
   };
@@ -329,7 +336,6 @@ const AnalyticsTab = ({ workerProfiles }) => {
       </div>
 
       {/* ── Top Filters & Action Bar ── */}
-      {/* ADDED position: relative and zIndex: 20 to this wrapper so the dropdown overlaps the table below */}
       <div className="panel" style={{ overflow: "visible", position: "relative", zIndex: 20 }}>
         <div className="panel-body" style={{ padding: "16px 20px", display: "flex", flexWrap: "wrap", gap: "24px", alignItems: "center", justifyContent: "space-between" }}>
           
@@ -476,22 +482,25 @@ const AnalyticsTab = ({ workerProfiles }) => {
           <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left" }}>
             <thead>
               <tr>
-                <th style={{ ...thStyle, width: "25%" }} onClick={() => requestSort('name')}>
+                <th style={{ ...thStyle, width: "20%" }} onClick={() => requestSort('name')}>
                   Worker Name <span style={{ opacity: sortConfig.key === 'name' ? 1 : 0.3, marginLeft: 4, fontSize: 10 }}>{sortConfig.key === 'name' && sortConfig.direction === 'desc' ? '▼' : '▲'}</span>
+                </th>
+                <th style={{ ...thStyle, width: "15%" }} onClick={() => requestSort('totalFrames')}>
+                  Monitored Time <span style={{ opacity: sortConfig.key === 'totalFrames' ? 1 : 0.3, marginLeft: 4, fontSize: 10 }}>{sortConfig.key === 'totalFrames' && sortConfig.direction === 'desc' ? '▼' : '▲'}</span>
                 </th>
                 <th style={{ ...thStyle, width: "15%" }} onClick={() => requestSort('workstation')}>
                   Workstation <span style={{ opacity: sortConfig.key === 'workstation' ? 1 : 0.3, marginLeft: 4, fontSize: 10 }}>{sortConfig.key === 'workstation' && sortConfig.direction === 'desc' ? '▼' : '▲'}</span>
                 </th>
-                <th style={{ ...thStyle, width: "15%" }} onClick={() => requestSort('working')}>
+                <th style={{ ...thStyle, width: "12%" }} onClick={() => requestSort('working')}>
                   Working <span style={{ opacity: sortConfig.key === 'working' ? 1 : 0.3, marginLeft: 4, fontSize: 10 }}>{sortConfig.key === 'working' && sortConfig.direction === 'asc' ? '▲' : '▼'}</span>
                 </th>
-                <th style={{ ...thStyle, width: "15%" }} onClick={() => requestSort('idle')}>
-                  Idle <span style={{ opacity: sortConfig.key === 'idle' ? 1 : 0.3, marginLeft: 4, fontSize: 10 }}>{sortConfig.key === 'idle' && sortConfig.direction === 'asc' ? '▲' : '▼'}</span>
+                <th style={{ ...thStyle, width: "12%" }} onClick={() => requestSort('Passive Working')}>
+                  Passive Working <span style={{ opacity: sortConfig.key === 'idle' ? 1 : 0.3, marginLeft: 4, fontSize: 10 }}>{sortConfig.key === 'idle' && sortConfig.direction === 'asc' ? '▲' : '▼'}</span>
                 </th>
-                <th style={{ ...thStyle, width: "15%" }} onClick={() => requestSort('distracted')}>
+                <th style={{ ...thStyle, width: "12%" }} onClick={() => requestSort('distracted')}>
                   Distracted <span style={{ opacity: sortConfig.key === 'distracted' ? 1 : 0.3, marginLeft: 4, fontSize: 10 }}>{sortConfig.key === 'distracted' && sortConfig.direction === 'asc' ? '▲' : '▼'}</span>
                 </th>
-                <th style={{ ...thStyle, width: "15%" }} onClick={() => requestSort('away')}>
+                <th style={{ ...thStyle, width: "12%" }} onClick={() => requestSort('away')}>
                   Away <span style={{ opacity: sortConfig.key === 'away' ? 1 : 0.3, marginLeft: 4, fontSize: 10 }}>{sortConfig.key === 'away' && sortConfig.direction === 'asc' ? '▲' : '▼'}</span>
                 </th>
               </tr>
@@ -507,6 +516,11 @@ const AnalyticsTab = ({ workerProfiles }) => {
                 >
                   <td style={{ ...tdStyle, fontWeight: 700, color: "var(--blue-900)" }}>
                     {w.name} <div style={{ fontSize: 11, color: "var(--gray-400)", fontWeight: 500, marginTop: 2 }}>{w.email}</div>
+                  </td>
+                  <td style={{ ...tdStyle }}>
+                    <div style={{ fontWeight: 700, color: "var(--blue-600)", background: "rgba(37,99,235,0.08)", padding: "4px 8px", borderRadius: "6px", display: "inline-block", fontSize: 12 }}>
+                      {formatFramesWithTime(w.totalFrames)}
+                    </div>
                   </td>
                   <td style={{ ...tdStyle, color: "var(--gray-600)" }}>
                     <div style={{ background: "var(--gray-100)", padding: "4px 8px", borderRadius: "6px", display: "inline-block", fontSize: 11, fontWeight: 600 }}>{w.workstation}</div>
@@ -527,7 +541,7 @@ const AnalyticsTab = ({ workerProfiles }) => {
               ))}
               {sortedWorkers.length === 0 && (
                 <tr>
-                  <td colSpan={6} style={{ padding: 40, textAlign: "center", fontSize: 14, color: "var(--gray-400)", fontWeight: 500 }}>
+                  <td colSpan={7} style={{ padding: 40, textAlign: "center", fontSize: 14, color: "var(--gray-400)", fontWeight: 500 }}>
                     {selectedWorkstation !== "All" ? `No performance data found for ${selectedWorkstation}.` : "No worker data found for the selected filters."}
                   </td>
                 </tr>

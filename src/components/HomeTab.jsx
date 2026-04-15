@@ -21,10 +21,11 @@ const DEFAULT_BREAKS = {
 
 const STATE_BADGE = {
   "Working":    { bg:"#dcfce7", color:"#15803d", dot:"#16a34a", label:"WORKING"    },
-  "Idle":       { bg:"#fef9c3", color:"#854d0e", dot:"#ca8a04", label:"IDLE"       },
+  "Idle":       { bg:"#fef9c3", color:"#854d0e", dot:"#ca8a04", label:"PASSIVE WORK" },
   "Distracted": { bg:"#fee2e2", color:"#991b1b", dot:"#dc2626", label:"DISTRACTED" },
   "Away":       { bg:"#f3f4f6", color:"#374151", dot:"#6b7280", label:"AWAY"       },
   "Break":      { bg:"#e0e7ff", color:"#1d4ed8", dot:"#3b82f6", label:"ON BREAK"   },
+  "On Leave":   { bg:"#f3e8ff", color:"#6b21a8", dot:"#9333ea", label:"ON LEAVE"   }, // ADDED WAIVER STATE
 };
 
 function tsMins(ts) {
@@ -45,7 +46,7 @@ function isDuringBreak(ts, breakRanges) {
   return breakRanges.some(([s, e]) => s !== null && e !== null && t >= s && t <= e);
 }
 
-// NEW: Helper to check if current time is outside the main shift
+// Helper to check if current time is outside the main shift
 function isOutsideWorkingHours(ts, onTimeStr, offTimeStr) {
   const t = tsMins(ts);
   const start = toMins(onTimeStr);
@@ -92,7 +93,7 @@ const LiveWorkerChart = ({ workers, selectedWorker, onWorkerSelect }) => {
           <div className="panel-icon pi-blue">📊</div> Live Efficiency Meter {selectedWorker && <span style={{ fontSize: 11, color: "var(--blue-500)", fontWeight: 400, marginLeft: 8 }}> — {selectedWorker.name}</span>}
         </div>
         <div className="chart-filters">
-          {[{ key: "all", label: "All", cls: "f-all" }, { key: "working", label: "Working", cls: "f-work" }, { key: "idle", label: "Idle", cls: "f-idle" }, { key: "distracted", label: "Distracted", cls: "f-dist" }, { key: "away", label: "Away", cls: "f-away" }].map(f => (
+          {[{ key: "all", label: "All", cls: "f-all" }, { key: "working", label: "Working", cls: "f-work" }, { key: "idle", label: "Passive Work", cls: "f-idle" }, { key: "distracted", label: "Distracted", cls: "f-dist" }, { key: "away", label: "Away", cls: "f-away" }].map(f => (
             <button key={f.key} className={`filter-btn ${filter === f.key ? f.cls : ""}`} onClick={() => setFilter(f.key)}>{f.label}</button>
           ))}
         </div>
@@ -109,7 +110,7 @@ const LiveWorkerChart = ({ workers, selectedWorker, onWorkerSelect }) => {
             <Tooltip content={<ChartTooltip />} />
             <Legend wrapperStyle={{ fontSize: 11 }} />
             {(filter === "all" || filter === "working") && <Bar dataKey="working" name="Working" fill="#2563eb" radius={[4,4,0,0]} />}
-            {(filter === "all" || filter === "idle") && <Bar dataKey="idle" name="Idle" fill="#f59e0b" radius={[4,4,0,0]} />}
+            {(filter === "all" || filter === "idle") && <Bar dataKey="idle" name="Passive Work" fill="#f59e0b" radius={[4,4,0,0]} />}
             {(filter === "all" || filter === "distracted") && <Bar dataKey="distracted" name="Distracted" fill="#ef4444" radius={[4,4,0,0]} />}
             {(filter === "all" || filter === "away") && <Bar dataKey="away" name="Away" fill="#6b7280" radius={[4,4,0,0]} />}
           </BarChart>
@@ -131,7 +132,7 @@ const LiveWorkerDetail = ({ worker, onClose }) => {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, paddingBottom: 12, borderBottom: "1px solid var(--gray-100)" }}>
           <div style={{ fontSize: 13, color: "var(--gray-600)", display: "flex", alignItems: "center", gap: 6 }}><span style={{ fontSize: 16 }}>📧</span> {worker.email}</div>
         </div>
-        {[{ label: "Working", val: worker.working, color: "#2563eb" }, { label: "Idle", val: worker.idle, color: "#f59e0b" }, { label: "Distracted", val: worker.distracted, color: "#ef4444" }, { label: "Away", val: worker.away, color: "#6b7280" }].map(s => (
+        {[{ label: "Working", val: worker.working, color: "#2563eb" }, { label: "Passive Work", val: worker.idle, color: "#f59e0b" }, { label: "Distracted", val: worker.distracted, color: "#ef4444" }, { label: "Away", val: worker.away, color: "#6b7280" }].map(s => (
           <div key={s.label}>
             <div className="detail-row"><div className="detail-label"><div className="detail-dot" style={{ background: s.color }} />{s.label}</div><div className="detail-val" style={{ color: s.color }}>{s.val}%</div></div>
             <div className="prog-bar"><div className="prog-fill" style={{ width: `${s.val}%`, background: s.color }} /></div>
@@ -211,38 +212,50 @@ const HomeTab = ({ workerProfiles }) => {
     return () => unsubscribe();
   }, [selectedCam]);
 
-  // MERGE: Profiles mapped to selected workstation + Live Data
+  // MERGE: Profiles mapped to selected workstation + Live Data + Waivers
   const activeWorkersWithProfiles = useMemo(() => {
     const isBreakNow = isDuringBreak(lastTimestamp, breakRanges);
     const isOffHours = isOutsideWorkingHours(lastTimestamp, breaks.onTime?.single, breaks.offTime?.single);
     const isSystemPaused = isBreakNow || isOffHours;
+    const nowMs = Date.now(); // Current time for individual waiver checks
 
     const expectedWorkers = Object.entries(workerProfiles || {})
       .filter(([id, profile]) => (profile.workstation || "Workstation-1") === selectedCam);
 
     return expectedWorkers.map(([id, profile]) => {
       const wInfoRaw = liveData[id] || {};
+      const isOnWaiver = profile.active_waiver_until && profile.active_waiver_until > nowMs;
       
       // ── AUTO-FREEZE LOGIC ── 
       // Deep clone the stats to ensure references don't leak updates
-      if (!isSystemPaused && Object.keys(wInfoRaw).length > 0) {
+      if (!isSystemPaused && !isOnWaiver && Object.keys(wInfoRaw).length > 0) {
         lastActiveStats.current[id] = { ...wInfoRaw };
-      } else if (isSystemPaused && !lastActiveStats.current[id] && Object.keys(wInfoRaw).length > 0) {
-        // Fallback: If page loaded during a break/off-hours, freeze the first frame of data we get
+      } else if ((isSystemPaused || isOnWaiver) && !lastActiveStats.current[id] && Object.keys(wInfoRaw).length > 0) {
+        // Fallback: If page loaded during a break/leave, freeze the first frame of data we get
         lastActiveStats.current[id] = { ...wInfoRaw };
       }
 
-      // Use the completely frozen stats during a pause so KPIs immediately stop updating
-      const wInfo = isSystemPaused && lastActiveStats.current[id] ? lastActiveStats.current[id] : wInfoRaw;
+      // Use the completely frozen stats during a pause/leave so KPIs immediately stop updating
+      const wInfo = (isSystemPaused || isOnWaiver) && lastActiveStats.current[id] ? lastActiveStats.current[id] : wInfoRaw;
       
       let mappedState = "Away";
-      if (isOffHours) {
+      
+      // 1. Individual Waiver overrides system schedules
+      if (isOnWaiver) {
+        mappedState = "On Leave";
+      } 
+      // 2. System-wide Off Hours
+      else if (isOffHours) {
         mappedState = "Away"; // Treat off-hours as everyone being Away
-      } else if (isBreakNow) {
+      } 
+      // 3. System-wide Break
+      else if (isBreakNow) {
         mappedState = "Break";
-      } else if (wInfo.liveRaw) {
+      } 
+      // 4. Normal AI Status
+      else if (wInfo.liveRaw) {
         if (wInfo.liveRaw === "WORKING" || wInfo.liveRaw === "THINKING") mappedState = "Working";
-        else if (wInfo.liveRaw === "IDLE") mappedState = "Idle";
+        else if (wInfo.liveRaw === "IDLE" || wInfo.liveRaw === "PASSIVE WORKING") mappedState = "Idle";
         else if (wInfo.liveRaw === "DISTRACTED" || wInfo.liveRaw === "PHONE PROXIMITY") mappedState = "Distracted";
       }
 
@@ -256,7 +269,7 @@ const HomeTab = ({ workerProfiles }) => {
         working: wInfo.working || 0,
         idle: wInfo.idle || 0,
         distracted: wInfo.distracted || 0,
-        away: hasData ? (wInfo.away || 0) : (isSystemPaused ? 0 : 100), 
+        away: hasData ? (wInfo.away || 0) : ((isSystemPaused || isOnWaiver) ? 0 : 100), 
         totalFrames: wInfo.totalFrames || 0
       };
     }).sort((a, b) => a.id.localeCompare(b.id));
