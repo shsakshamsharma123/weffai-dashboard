@@ -160,6 +160,9 @@ const HomeTab = ({ workerProfiles }) => {
   const [selectedCam, setSelectedCam] = useState("Workstation-1");
   const [liveStreamUrl, setLiveStreamUrl] = useState("http://localhost:8889/workstation1/");
   const [selectedWorker, setSelectedWorker] = useState(null);
+  
+  // NEW: State to track Cloud Video Stream Sync Status
+  const [streamStatus, setStreamStatus] = useState("connecting"); // "connecting", "playing", "syncing", "error"
 
   // Raw live data from Firestore for the selected camera
   const [liveData, setLiveData] = useState({});
@@ -185,6 +188,7 @@ const HomeTab = ({ workerProfiles }) => {
   // Update Live Stream URL automatically based on selected Workstation (Requires trailing slash!)
   useEffect(() => {
     setLiveStreamUrl(selectedCam === "Workstation-1" ? "http://localhost:8889/workstation1/" : "http://localhost:8889/workstation2/");
+    setStreamStatus("connecting"); // Reset stream status on camera switch
   }, [selectedCam]);
 
   // Listen to Firestore for Live Data on the SELECTED Workstation
@@ -390,8 +394,16 @@ const HomeTab = ({ workerProfiles }) => {
 
         <div className="dash-right">
           <div className="panel" style={{ display: "flex", flexDirection: "column", overflow: "hidden" }}>
+            
             <div className="panel-header" style={{ flexDirection: "column", alignItems: "flex-start", gap: 10, borderBottom: "1px solid var(--gray-100)" }}>
-              <div className="panel-title"><div className="panel-icon pi-teal">📹</div> Office Cameras</div>
+              <div style={{ display: "flex", justifyContent: "space-between", width: "100%", alignItems: "center" }}>
+                <div className="panel-title"><div className="panel-icon pi-teal">📹</div> Office Cameras</div>
+                
+                {/* ☁️ NEW: Cloud Stream Latency Badge */}
+                <div style={{ fontSize: 10, fontWeight: 800, color: "var(--amber-600)", background: "var(--amber-50)", padding: "4px 8px", borderRadius: "6px", border: "1px solid var(--amber-200)", display: "flex", alignItems: "center", gap: 4 }}>
+                  <span style={{ animation: "statePulse 2s infinite" }}>☁️</span> CLOUD STREAM (1-3s DELAY)
+                </div>
+              </div>
               
               <div className="cam-tabs" style={{ display: "flex", overflowX: "auto", width: "100%", gap: 4, paddingBottom: 4 }}>
                 {availableWorkstations.map(c => (
@@ -404,7 +416,21 @@ const HomeTab = ({ workerProfiles }) => {
             
             {/* The video container is now strictly locked to 16:9 aspect ratio */}
             <div className="video-wrap" style={{ position: "relative", width: "100%", aspectRatio: "16/9", background: "#000" }}>
-              <VideoFeed videoUrl={liveStreamUrl} />
+              
+              {/* 🔄 NEW: Syncing with Cloud Overlay Placeholder */}
+              {streamStatus === "syncing" && (
+                <div style={{ 
+                  position: "absolute", inset: 0, zIndex: 10, background: "rgba(15,23,42,0.85)", backdropFilter: "blur(4px)", 
+                  display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "white", animation: "fadeUp 0.3s ease" 
+                }}>
+                  <div style={{ width: 36, height: 36, border: "3px solid rgba(255,255,255,0.1)", borderTopColor: "#3b82f6", borderRadius: "50%", animation: "spin 1s linear infinite", marginBottom: 12 }} />
+                  <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: "0.05em" }}>🔄 SYNCING WITH CLOUD...</div>
+                  <div style={{ fontSize: 11, color: "rgba(255,255,255,0.6)", marginTop: 6 }}>Refreshing secure token (takes ~5s)</div>
+                </div>
+              )}
+              
+              {/* Passes onStatusChange to VideoFeed so the WebRTC player can trigger the syncing overlay if it drops */}
+              <VideoFeed videoUrl={liveStreamUrl} onStatusChange={setStreamStatus} />
             </div>
           </div>
         </div>

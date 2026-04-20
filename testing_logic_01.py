@@ -22,8 +22,8 @@ from google.oauth2 import service_account
 # 1. CONFIGURATION
 # ==========================================
 RTSP_URL         = "rtsp://admin:CBKLVW@172.16.15.121:554/streaming/channels/101/"
-POSE_MODEL_PATH  = "/Users/musab/Desktop/Optimized_model/yolo11l-pose.pt" #older model again
-PHONE_MODEL_PATH = "/Users/musab/Desktop/weffai-dashboard/best (13).pt"
+POSE_MODEL_PATH  = "yolo11l-pose.pt" #older model again
+PHONE_MODEL_PATH = "best (13).pt"
 
 SCRIPT_DIR   = os.path.dirname(os.path.abspath(__file__))
 def get_video_filename():
