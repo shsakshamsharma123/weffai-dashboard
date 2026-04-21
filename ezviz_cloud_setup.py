@@ -1161,15 +1161,36 @@ class EZVIZCloudCapture:
         command = [
             'ffmpeg',
             '-hide_banner', '-loglevel', 'error',
-            '-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '5',
-            '-rw_timeout', '15000000',
-            '-analyzeduration', '1000000', '-probesize', '1000000',
-            '-f', 'hls', '-i', self.current_url,
-            '-f', 'image2pipe', '-pix_fmt', 'bgr24', '-vcodec', 'rawvideo', '-an',
+            
+            # AGGRESSIVE RECONNECTION
+            '-reconnect', '1',
+            '-reconnect_streamed', '1',
+            '-reconnect_delay_max', '2',      # 2 seconds max delay (was 5)
+            '-rw_timeout', '5000000',         # 5 second timeout (was 15)
+            
+            # REDUCE BUFFERING
+            '-analyzeduration', '500000',     # 0.5 seconds (was 1M)
+            '-probesize', '500000',           # 0.5 seconds (was 1M)
+            
+            # INPUT
+            '-f', 'hls',
+            '-i', self.current_url,
+            
+            # OUTPUT - LOWER LATENCY
+            '-f', 'image2pipe',
+            '-pix_fmt', 'bgr24',
+            '-vcodec', 'rawvideo',
+            '-an',
             '-vf', f'scale={self.width}:{self.height},fps={self.fps}',
+            
+            # CRITICAL: Reduce FFmpeg buffer
+            '-avioflags', 'direct',
+            '-fflags', 'nobuffer',
+            '-flags', 'low_delay',
+            
             '-'
         ]
-        
+                
         try:
             self.process = subprocess.Popen(
                 command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -1334,7 +1355,7 @@ class DeskState:
         self.out_of_zone_timer    = 0.0
         self.still_timer          = 0.0
         
-        # NEW: Phone distraction timer (5 minutes = 300 seconds)
+        # Phone distraction timer (5 minutes = 300 seconds)
         self.phone_detected_timer = 0.0
         self.PHONE_DISTRACTION_THRESHOLD = 300.0  # 5 minutes
         self.phone_buffer_active = False
@@ -1396,7 +1417,7 @@ class DeskState:
             if r_elbow[2] > 0.4 and point_in_rect((r_elbow[0], r_elbow[1]), x1, y1, x2, y2): 
                 is_scrolling_phone = True
 
-        # NEW: Phone distraction with 5-minute buffer
+        # Phone distraction with 5-minute buffer
         if is_scrolling_phone:
             self.phone_detected_timer += dt
             self.phone_buffer_active = True
@@ -1455,7 +1476,7 @@ class DeskState:
 
     def apply_absence(self, dt):
         self.time_since_last_seen += dt
-        if self.time_since_last_seen > 15.0:  # 15-second tracking buffer
+        if self.time_since_last_seen > 2.0:  # CHANGED: 2-second tracking buffer for quick AWAY detection
             self.mark_away()
         self._tally_state()
 
